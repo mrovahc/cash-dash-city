@@ -125,13 +125,13 @@ let adBusy=false;
 function showRewardedAd(onReward){
   if(window.GamePix&&GamePix.rewardAd){
     if(adBusy)return; adBusy=true;
-    const fail=()=>{adBusy=false;if(window.__toast)window.__toast('No hay anuncio disponible ahora. Intenta de nuevo en un momento.');};
-    try{GamePix.rewardAd().then(res=>{adBusy=false;if(res&&res.success)onReward();else fail();}).catch(fail);}catch(e){fail();}
+    const fail=()=>{adBusy=false;if(window.__setMusic)__setMusic(true);if(window.__toast)window.__toast('No hay anuncio disponible ahora. Intenta de nuevo en un momento.');};
+    if(window.__setMusic)__setMusic(false);try{GamePix.rewardAd().then(res=>{adBusy=false;if(window.__setMusic)__setMusic(true);if(res&&res.success)onReward();else fail();}).catch(fail);}catch(e){fail();}
   } else simulatedAd(onReward);
 }
 function showInterstitial(cb){
   if(window.GamePix&&GamePix.interstitialAd&&!adBusy){
-    adBusy=true;const done=()=>{adBusy=false;cb&&cb();};
+    adBusy=true;if(window.__setMusic)__setMusic(false);const done=()=>{adBusy=false;if(window.__setMusic)__setMusic(true);cb&&cb();};
     try{GamePix.interstitialAd().then(done).catch(done);}catch(e){done();}
   } else cb&&cb();
 }
@@ -171,7 +171,46 @@ function beep(f,d=.08,type='square',v=.04,slide=0){
     g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.0001,t+d);
     o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+d);}catch(e){}
 }
-$('mute').onclick=()=>{muted=!muted;$('mute').textContent=muted?'🔇':'🔊';};
+/* ---------- música original (generada, sin archivos) ---------- */
+const mus={on:false,step:0,next:0,gain:null,noise:null,vol:.55};
+const CH_ROOT=[110,87.31,130.81,98];
+const CH_TONES=[[220,261.63,329.63,440],[174.61,220,261.63,349.23],[261.63,329.63,392,523.25],[196,246.94,293.66,392]];
+const ARP=[0,1,2,3,2,1,2,3,0,1,2,3,2,1,3,2];
+function mOsc(f,t,d,type,v){const o=ac.createOscillator(),g=ac.createGain();o.type=type;o.frequency.setValueAtTime(f,t);
+  g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(v,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+d);
+  o.connect(g);g.connect(mus.gain);o.start(t);o.stop(t+d+.02);}
+function mKick(t){const o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.setValueAtTime(150,t);o.frequency.exponentialRampToValueAtTime(45,t+.12);
+  g.gain.setValueAtTime(.3,t);g.gain.exponentialRampToValueAtTime(.0001,t+.16);o.connect(g);g.connect(mus.gain);o.start(t);o.stop(t+.18);}
+function mHat(t,v){const s=ac.createBufferSource(),f=ac.createBiquadFilter(),g=ac.createGain();s.buffer=mus.noise;f.type='highpass';f.frequency.value=7500;
+  g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.0001,t+.05);s.connect(f);f.connect(g);g.connect(mus.gain);s.start(t);s.stop(t+.06);}
+function mStep(s,t){
+  const bar=(s>>4)&3,k=s&15,play=state==='play',tones=CH_TONES[bar],root=CH_ROOT[bar];
+  if(k%4===0&&(play||k%8===0))mKick(t);
+  if(play&&k%4===2)mHat(t,.06);
+  if(k%4===0)mOsc(root,t,.22,'triangle',.2);else if(k%4===2)mOsc(root*2,t,.14,'triangle',.11);
+  mOsc(tones[ARP[k]],t,play?.12:.18,play?'square':'triangle',play?.045:.05);
+  if(play&&(k===0||k===8))mOsc(tones[2]*2,t,.35,'sine',.07);
+}
+function musicTick(){
+  if(!ac||ac.state!=='running')return;
+  while(mus.next<ac.currentTime+.15){
+    mStep(mus.step,mus.next);
+    const bpm=state==='play'&&run?118+Math.min(34,(run.speed-16)*1.1):104;
+    mus.next+=60/bpm/4;mus.step=(mus.step+1)%64;
+  }
+}
+function startMusic(){
+  if(mus.on)return;
+  try{
+    ac=ac||new(window.AudioContext||window.webkitAudioContext)();if(ac.state==='suspended')ac.resume();
+    mus.gain=ac.createGain();mus.gain.gain.value=muted?0:mus.vol;mus.gain.connect(ac.destination);
+    const nb=ac.createBuffer(1,Math.floor(ac.sampleRate*.1),ac.sampleRate),d=nb.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;mus.noise=nb;
+    mus.next=ac.currentTime+.1;mus.on=true;setInterval(musicTick,30);
+  }catch(e){}
+}
+window.__setMusic=on=>{if(mus.gain)mus.gain.gain.value=(on&&!muted)?mus.vol:0;};
+['pointerdown','keydown','touchstart'].forEach(ev=>addEventListener(ev,startMusic,{once:true,passive:true}));
+$('mute').onclick=()=>{muted=!muted;$('mute').textContent=muted?'🔇':'🔊';if(mus.gain)mus.gain.gain.value=muted?0:mus.vol;};
 
 /* ---------- three.js ---------- */
 const LANES=[-2.4,0,2.4],TILE=30,NT=5;
@@ -687,9 +726,8 @@ document.addEventListener('visibilitychange',()=>{
 $('pause').onclick=()=>{if(state==='paused'){state='play';$('pause').classList.remove('on');last=performance.now();}};
 window.__toast=toast;
 gp('loaded');
-window.__dbg={S,get state(){return state;},get run(){return run;},beginRun,P,die};
+window.__dbg={get music(){return mus.on;},S,get state(){return state;},get run(){return run;},beginRun,P,die};
 })();
 </script>
 </body>
 </html>
-
