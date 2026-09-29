@@ -64,6 +64,7 @@
   <button class="play" id="bPlay">▶ JUGAR <span class="sub">usa 1 vida</span></button>
   <button class="ad" id="bBonus">📺 Ver anuncio y empezar con BONUS <span class="sub">🛡️ escudo + 🧲 imán + ✖️2 monedas al arrancar</span></button>
   <button class="ad" id="bLife">📺 Ver anuncio: +1 vida ❤️</button>
+  <button class="ad" id="bChest">🎁 Cofre de monedas</button>
   <div class="row"><button class="blue" id="bShop" style="min-width:0">🛒 Tienda</button><button class="blue" id="bMis" style="min-width:0">🎯 Misiones</button></div>
 </div>
 
@@ -91,6 +92,7 @@
   <div class="row"><div class="stat" id="dDist"></div><div class="stat" id="dCoins"></div></div>
   <button class="ad" id="bReviveAd">📺 Ver anuncio y SEGUIR <span class="sub">continúas desde donde chocaste</span></button>
   <button class="coin" id="bReviveCoin">🪙 Seguir con monedas</button>
+  <button class="ad" id="bDouble">📺 Ver anuncio: ¡duplicar monedas!</button>
   <button class="grey" id="bEnd">Terminar partida</button>
 </div>
 
@@ -146,7 +148,7 @@ const store={get(k){try{return (window.GamePix&&GamePix.localStorage)?GamePix.lo
 function gp(n,a){try{if(window.GamePix&&GamePix[n])GamePix[n](a);}catch(e){}}
 let S={};
 try{S=JSON.parse(store.get(KEY))||{};}catch(e){}
-S=Object.assign({coins:0,best:0,hearts:3,heartTs:Date.now(),runs:0,char:'m'},S);
+S=Object.assign({coins:0,best:0,hearts:3,heartTs:Date.now(),runs:0,char:'m',chestTs:0},S);
 S.owned=Array.isArray(S.owned)?S.owned:['m0','f0'];S.outfit=Object.assign({m:0,f:0},S.outfit||{});
 S.up=Object.assign({magnet:0,mult:0,hearts:0},S.up||{});
 S.mis=S.mis&&S.mis.length===3?S.mis:[{t:'coins',k:0},{t:'dist',k:0},{t:'runs',k:0,c:0}];
@@ -377,7 +379,7 @@ function beginRun(bonus){
   if(S.hearts>=maxH())S.heartTs=Date.now();
   S.hearts--;save();
   clearWorld();
-  run={t:0,speed:15,dist:0,coins:0,nextRow:14,shield:false,revAd:false,revN:0,cmb:0,lv:0};
+  run={t:0,speed:16,dist:0,coins:0,nextRow:14,shield:false,revAdN:0,revN:0,cmb:0,lv:0,doubled:false};
   P.lane=1;P.x=0;P.y=0;P.vy=0;P.slide=0;P.inv=0;T.magnet=0;T.mult=0;
   if(bonus){run.shield=true;T.magnet=10;T.mult=20;toast('🎁 ¡Bonus activo! Escudo + Imán + Monedas x2');}
   bubble.visible=run.shield;
@@ -418,7 +420,7 @@ function mkPow(x,z,type){
 }
 function spawnRow(){
   const z0=-108,free=(Math.random()*3)|0,r=Math.random();
-  if(r<.22){ // fila de monedas
+  if(r<.14){ // fila de monedas
     const l=(Math.random()*3)|0,n=8+((Math.random()*4)|0);
     for(let i=0;i<n;i++)mkCoin(LANES[l],.9,z0-i*2.3);
     return;
@@ -429,11 +431,11 @@ function spawnRow(){
       else if(Math.random()<.35){mkPow(LANES[l],z0-4,['mag','x2','shd'][(Math.random()*3)|0]);}
       continue;
     }
-    if(Math.random()<.78){
+    if(Math.random()<Math.min(.95,.72+run.dist/5000)){
       const q=Math.random(),lz=z0;
-      if(q<.45){const m=mkBarrier(LANES[l]);m.position.z=lz;scene.add(m);obs.push({m,type:'bar',z:lz,d:.5,x:LANES[l]});
+      if(q<.35){const m=mkBarrier(LANES[l]);m.position.z=lz;scene.add(m);obs.push({m,type:'bar',z:lz,d:.5,x:LANES[l]});
         if(Math.random()<.7)for(let i=0;i<5;i++)mkCoin(LANES[l],1.0+Math.sin(i/4*Math.PI)*1.5,lz+5.5-i*2.6);}
-      else if(q<.72){const m=mkLow(LANES[l]);m.position.z=lz;scene.add(m);obs.push({m,type:'low',z:lz,d:.4,x:LANES[l]});}
+      else if(q<.65){const m=mkLow(LANES[l]);m.position.z=lz;scene.add(m);obs.push({m,type:'low',z:lz,d:.4,x:LANES[l]});}
       else{const d=rnd(8,14),cz=lz-d/2;const m=mkTrain(LANES[l],d);m.position.z=cz;scene.add(m);obs.push({m,type:'train',z:cz,d,x:LANES[l]});}
     }
   }
@@ -474,7 +476,7 @@ function hud(){
 
 /* ---------- lógica ---------- */
 function update(dt){
-  run.t+=dt;run.speed=Math.min(36,15+run.t*.32);
+  run.t+=dt;run.speed=Math.min(46,16+run.t*.5);
   const dz=run.speed*dt;run.dist+=dz;
   const lv=1+((run.dist/500)|0);if(lv!==run.lv){run.lv=lv;gp('updateLevel',lv);if(lv>1)toast('⭐ ¡Nivel '+lv+'!');}
   if(P.inv>0)P.inv-=dt;if(T.magnet>0)T.magnet-=dt;if(T.mult>0)T.mult-=dt;if(comboT>0)comboT-=dt;else combo=0;
@@ -488,7 +490,7 @@ function update(dt){
   obs.forEach(o=>{o.z+=dz;o.m.position.z=o.z;});
   coinsArr.forEach(c=>{c.m.position.z+=dz;c.m.rotation.y+=dt*5;});
   pows.forEach(p=>{p.z+=dz;p.m.position.z=p.z;p.m.rotation.y+=dt*3;p.m.position.y=1.3+Math.sin(run.t*4)*.15;});
-  run.nextRow-=dz;if(run.nextRow<=0){spawnRow();run.nextRow=20+rnd(0,8)+run.speed*.45;}
+  run.nextRow-=dz;if(run.nextRow<=0){spawnRow();run.nextRow=16+rnd(0,7)+run.speed*.38;if(Math.random()<Math.min(.3,run.dist/6000))run.nextRow*=.65;}
   // colisiones
   const pTop=P.y+(sliding?.8:1.8),pcy=P.y+(sliding?.4:.9);
   for(let i=obs.length-1;i>=0;i--){
@@ -538,7 +540,8 @@ function die(){
   setTimeout(()=>{
     if(state!=='dying')return;state='dead';
     $('dDist').textContent='🏃 '+(run.dist|0)+' m';$('dCoins').textContent='🪙 +'+run.coins;
-    $('bReviveAd').style.display=run.revAd?'none':'';
+    $('bReviveAd').style.display=run.revAdN>=2?'none':'';
+    const bd=$('bDouble');bd.style.display=(run.coins>0&&!run.doubled)?'':'none';bd.innerHTML='📺 Ver anuncio: ¡duplicar monedas! <span class="sub">+'+run.coins+' 🪙 extra</span>';
     const cost=reviveCost();const b=$('bReviveCoin');
     b.innerHTML='🪙 Seguir por '+cost+' monedas<span class="sub">tienes '+S.coins+'</span>';b.disabled=S.coins<cost;
     $('dead').classList.add('on');$('hud').classList.remove('on');
@@ -550,7 +553,8 @@ function revive(){
   P.inv=3;P.y=0;P.vy=0;P.slide=0;state='play';
   $('dead').classList.remove('on');$('hud').classList.add('on');beep(600,.3,'triangle',.06,500);
 }
-$('bReviveAd').onclick=()=>showRewardedAd(()=>{run.revAd=true;revive();});
+$('bReviveAd').onclick=()=>showRewardedAd(()=>{run.revAdN++;revive();});
+$('bDouble').onclick=()=>showRewardedAd(()=>{if(run.doubled)return;run.doubled=true;S.coins+=run.coins;save();$('bDouble').style.display='none';toast('🪙 ¡Monedas duplicadas! +'+run.coins);});
 $('bReviveCoin').onclick=()=>{const c=reviveCost();if(S.coins<c)return;S.coins-=c;run.revN++;save();revive();};
 $('bEnd').onclick=endRun;
 
@@ -585,6 +589,9 @@ function renderMenu(){
     $('mTimer').textContent='Próxima vida en '+m+':'+String(s).padStart(2,'0');}else $('mTimer').textContent='¡Vidas al máximo!';
   const none=S.hearts<=0;
   $('bPlay').disabled=false;$('bBonus').disabled=none;$('bLife').style.display=S.hearts<mx?'':'none';
+  {const left=180000-(Date.now()-(S.chestTs||0));const bc=$('bChest');
+   if(left>0){bc.disabled=true;bc.innerHTML='🎁 Próximo cofre en '+Math.floor(left/60000)+':'+String(Math.floor(left/1000)%60).padStart(2,'0');}
+   else{bc.disabled=false;bc.innerHTML='📺 Ver anuncio: Cofre de monedas 🎁<span class="sub">+100 🪙</span>';}}
   $('cM').classList.toggle('sel',S.char!=='f');$('cF').classList.toggle('sel',S.char==='f');
   $('bPlay').firstChild.textContent=none?'😴 SIN VIDAS ':'▶ JUGAR ';
 }
@@ -595,6 +602,7 @@ $('bNo1').onclick=()=>showRewardedAd(()=>{$('nolife').classList.remove('on');S.h
 $('bNo2').onclick=()=>{toast('Anuncio 1 de 2');showRewardedAd(()=>{toast('Anuncio 2 de 2');showRewardedAd(()=>{S.hearts=maxH();save();$('nolife').classList.remove('on');renderMenu();toast('❤️ ¡Vidas al máximo!');});});};
 $('bNoWait').onclick=()=>$('nolife').classList.remove('on');
 $('bBonus').onclick=()=>{if(S.hearts>0)showRewardedAd(()=>beginRun(true));};
+$('bChest').onclick=()=>showRewardedAd(()=>{S.coins+=100;S.chestTs=Date.now();save();renderMenu();toast('🎁 ¡Cofre! +100 🪙');});
 $('bLife').onclick=()=>showRewardedAd(()=>{if(S.hearts<maxH())S.hearts++;save();renderMenu();toast('❤️ +1 vida');});
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>{['shop','missions'].forEach(i=>$(i).classList.remove('on'));$('menu').classList.add('on');renderMenu();});
 $('cM').onclick=()=>{S.char='m';buildChar('m');save();renderMenu();};
@@ -684,3 +692,4 @@ window.__dbg={S,get state(){return state;},get run(){return run;},beginRun,P,die
 </script>
 </body>
 </html>
+
